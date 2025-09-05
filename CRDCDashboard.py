@@ -283,26 +283,12 @@ def server(input, output, session):
             fig = px.pie(
                 format_df,
                 values= 'count_result',
-                names= 'race',
+                names= 'species',
                 title='Race',
                 hole=0.3
             )
             return fig
 
-
-    @render_widget
-    @reactive.event(input.subjectCommonsSelect)
-    def subjectRace():
-        if dcSubjectInfoList() is not None:
-            format_df = dcSubjectInfoList()[6]
-            fig = px.pie(
-                format_df,
-                values= 'count_result',
-                names= 'species',
-                title='Species',
-                hole=0.3
-            )
-            return fig
 ####################################
 #                                  #
 #         app command              #
