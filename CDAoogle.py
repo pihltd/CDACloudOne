@@ -3,6 +3,7 @@ import dash
 from dash import html, dcc, dash_table, Output, Input, State
 import dash_bootstrap_components as dbc
 import pandas as pd
+import io
 
 
 #######################################
@@ -44,8 +45,8 @@ app.title ="CDAoogle"
 #                                          #
 ############################################
 
-table_df = pd.DataFrame()
-PAGE_SIZE=50
+table_df = pd.DataFrame([{"One": 1, "Two": 2}])
+PAGE_SIZE=25
 
 searchbox = dbc.Input(id="searchterms", placeholder="Enter search terms.....", type="text")
 gobutton = dbc.Button("Search CRDC", id='gobutton')
@@ -64,6 +65,7 @@ resultcontent = html.Div([
 pagingDataTable = dash_table.DataTable(
     id = 'paginDataTable',
     columns=[{"name": e, "id": e} for e in (table_df.columns)],
+    data=table_df.to_dict('records'),
     page_current=0,
     page_size=PAGE_SIZE,
     page_action='custom',
@@ -98,6 +100,7 @@ resultcontent2 = html.Div([
 ####################################
 
 app.layout = html.Div([
+    dcc.Store(id='querystore', storage_type='session'),
     html.Div([
         html.Hr(),
         html.H1("CDAoogle", id="sitetitle"),
@@ -113,7 +116,9 @@ app.layout = html.Div([
         html.Hr(),
         gobutton
     ], style={'textAlign':'center'}),
-    html.Div([resultcontent2], style={'width':'80%','marginLeft':'auto', 'marginRight':'auto'} )
+    html.Div([
+        html.Div(resultcontent, style={'width':'80%', 'marginLeft':'auto', 'marginRight':'auto'} )
+    ])
 ])
 
 
@@ -122,64 +127,81 @@ app.layout = html.Div([
 #         Callbacks                #
 #                                  #
 ####################################
-@app.callback(
-        Output("pagingDataTable", "data", allow_duplicate=True),
-        Input("pagingDataTable", "page_current"),
-        Input("pagingDataTable", "page_size")
-)
-def updateTable(page_current, page_size):
-    return table_df.iloc[page_current*page_size:(page_current+1)*page_size].to_dict('records')
+
 
 @app.callback(
-        Output("pagingDataTable", "data", allow_duplicate=True),
+    Output("resultsgohere", "children", allow_duplicate=True),
+    Input("querystore", "data"),
+)
+def updateTable(data):
+    current = 0
+    size = PAGE_SIZE
+    res_df = pd.read_json(io.StringIO(data), orient='split')
+    return dash_table.DataTable(
+        id='pagingDataTable',
+        columns=[{"name": e, "id": e} for e in (res_df.columns)],
+        data=res_df.iloc[current*size:(current+1)*size].to_dict('records'),
+        page_current=0,
+        page_size=PAGE_SIZE,
+        page_action='custom',
+        style_table={'overflowX':'auto'},
+        style_cell={'overflow':'hidden', 'textOverflow':'ellipsis', 'maxWidth':10, 'textAlign':'center'},
+        style_data={'color':'black', 'backgroundColor':'white'},
+        style_data_conditional=[{'if':{'row_index':'odd'}, 'backgroundColor': 'rgb(220,220,220)'}],
+        style_header={'backgroundColor': 'rgb(210,210,210)', 'color':'black', 'fontWeight':'bold', 'textAlign':'center'},
+        tooltip_data=[
+            {
+                column:{'value': str(value), 'type':'markdown'}
+                for column, value in row.items()
+            } for row in table_df.to_dict('records')
+        ],
+        tooltip_duration=None,
+        export_format="csv"
+    )
+
+
+@app.callback(
+    Output("resultsgohere", "children", allow_duplicate=True),
+    Input("pagingDataTable", "page_current"),
+    Input("pagingDataTable", "page_size"),
+    State("querystore", "data")
+)
+def pageTable(page_current, page_size, data):
+    res_df = pd.read_json(io.StringIO(data), orient='split')
+    return dash_table.DataTable(
+        id='pagingDataTable',
+        columns=[{"name": e, "id": e} for e in (res_df.columns)],
+        data=res_df.iloc[page_current*page_size:(page_current+1)*page_size].to_dict('records'),
+        page_current=page_current,
+        page_size=page_size,
+        page_action='custom',
+        style_table={'overflowX':'auto'},
+        style_cell={'overflow':'hidden', 'textOverflow':'ellipsis', 'maxWidth':10, 'textAlign':'center'},
+        style_data={'color':'black', 'backgroundColor':'white'},
+        style_data_conditional=[{'if':{'row_index':'odd'}, 'backgroundColor': 'rgb(220,220,220)'}],
+        style_header={'backgroundColor': 'rgb(210,210,210)', 'color':'black', 'fontWeight':'bold', 'textAlign':'center'},
+        tooltip_data=[
+            {
+                column:{'value': str(value), 'type':'markdown'}
+                for column, value in row.items()
+            } for row in table_df.to_dict('records')
+        ],
+        tooltip_duration=None,
+        export_format="csv"
+    )
+
+
+
+@app.callback(
+        Output("querystore", "data"),
         Input("gobutton", "n_clicks"),
-        State("searchterms", "value"),
-        State("pagingDataTable", "page_current"),
-        State("pagingDataTable", "page_size")
+        State("searchterms", "value")
 )
-def searchIt2(gobutton, searchterms, page_current, page_size):
-    table_df = cdapython.get_file_data(searchterms, return_data_as='dataframe')
+def searchIt2(gobutton, searchterms):
+    table_df = cdapython.get_subject_data(searchterms, return_data_as='dataframe')
     table_df = table_df.astype(str)
-    return table_df.iloc[page_current*page_size:(page_current+1)*page_size].to_dict('records')
+    return table_df.to_json(orient='split')
 
-
-'''@app.callback(
-    Output("resultsgohere", "children"),
-    Input(component_id="gobutton", component_property="n_clicks"),
-    State(component_id="searchterms", component_property="value")
-)
-def searchIt(gobutton, searchterms):
-    #table_df = cdapython.get_subject_data(match_all=[f"anatomic_site = {searchterms}"],return_data_as="dataframe")
-    #table_df = cdapython.get_subject_data(searchterms, return_data_as='dataframe')
-    print("Staring CDA Query")
-    table_df = cdapython.get_file_data(searchterms, return_data_as='dataframe')
-    print(table_df.head(5))
-    # Convert all data to String.  DataTable will barf if there are non-string datatypes in the data frame.
-    if table_df is None:
-        return "No data returned"
-    else:
-        print("Converting DF to string")
-        table_df = table_df.astype(str)
-        print("Starting DataTableConstruction")
-        return dash_table.DataTable(
-            data=table_df.head(100).to_dict('records'),
-            #data=table_df.to_dict('records'),
-            columns=[{"name": e, "id": e} for e in (table_df.columns)],
-            style_table={'overflowX':'auto'},
-            style_cell={'overflow':'hidden', 'textOverflow':'ellipsis', 'maxWidth':10, 'textAlign':'center'},
-            style_data={'color':'black', 'backgroundColor':'white'},
-            style_data_conditional=[{'if':{'row_index':'odd'}, 'backgroundColor': 'rgb(220,220,220)'}],
-            style_header={'backgroundColor': 'rgb(210,210,210)', 'color':'black', 'fontWeight':'bold', 'textAlign':'center'},
-            tooltip_data=[
-                {
-                    column:{'value': str(value), 'type':'markdown'}
-                    for column, value in row.items()
-                } for row in table_df.to_dict('records')
-            ],
-            tooltip_duration=None,
-            export_format="csv"
-        )
-'''
 
 
 ####################################
