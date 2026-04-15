@@ -181,7 +181,7 @@ def searchIt2(gobutton, searchterms):
         table_df = table_df.astype(str)
         return table_df.to_json(orient='split')
     else:
-        return pd.DataFrame().to_json(orient='split')
+        return pd.DataFrame([{"Result":"No Data Returned"}]).to_json(orient='split')
         print(f"Query Error: {table_df}")
 
 @app.callback(
