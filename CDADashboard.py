@@ -1,60 +1,225 @@
 from cdapython import *
-import requests
 import pandas as pd
+import json
+import io
 
-'''
-file_df_list = summarize_files(return_data_as='dataframe_list')
-# 0 - matching files count
-# 1 - subject count related to files
-# 2 - Data source (GDC, PDC, etc)
-# 3 - Data Type
-# 4 - Open/closed
-# 5 - file format
-# 6 - File type
-# 7 - Tumor v nomral
-# 8 - Anatomic site
-# 9 - Various stats
-for entry in file_df_list:
-    print(entry)
-'''
+from dash import html, dcc, dash_table, Output, Input, State, Dash
+import dash_bootstrap_components  as dbc
+import plotly.express as px
 
 
-#summary_file_list = summarize_files(return_data_as='dataframe_list')
-#datatype_df = summary_file_list[3]
-#print(f"Starting Dataframe:\t{datatype_df.head()}")
-#datatype_list = datatype_df['category'].unique()
-#print(f"Data Type list: {datatype_list}")
-#print(datatype_df.head())
+#######################################
+#                                     #
+#       App Definition                #
+#                                     #
+#######################################
+
+external_stylesheets = [
+    {  "href": "https://fonts.googleapis.com/css2?"
+                "family=Lato:wght@400;700&display=swap",
+        "rel": "stylesheet",
+    },
+    dbc.themes.BOOTSTRAP
+]
+
+app = Dash(
+    __name__,
+    external_stylesheets=external_stylesheets,
+    suppress_callback_exceptions=True,
+    prevent_initial_callbacks=True,
+    update_title="Updating..."
+)
+app.title ="Submission Dashboard"
 
 
-#categorytype = 'WXS'
+############################################
+#                                          #
+#                 Styles                   #
+#                                          #
+############################################
 
-#datatypeinfo_df = get_file_data(match_all='category = WXS')
-#datatypeinfo_df = get_file_data(match_all=f"category = {categorytype}")
-#print(datatypeinfo_df.head())
-#loc_df = datatypeinfo_df['data_source'].value_counts()
-#print(loc_df.head())
+SIDEBAR_STYLE = {
+    "position": "fixed",
+    "top": 0,
+    "left": 0,
+    "bottom": 0,
+    "width": "16rem",
+    "padding": "2rem 1 rem",
+    "background-color": "#f8f9fa"
+}
 
-"""
-datasource_df = summary_file_list[2]
-startlist = datasource_df['data_source'].unique()
-finallist = []
-for item in startlist:
-    finallist.append(item.split(' ')[0])
-print(finallist)
+CONTENT_STYLE = {
+    "margin-left": "18rem",
+    "margin-right": "12rem",
+    "padding": "2rem 1 rem"
+}
 
-"""
-#print(cda_functions())
-#print(columns(table='file'))
-#dc = ['GDC', 'IDC']
-#dc = ['GDC']
-#print(summarize_files(data_source = dc))
-print(summarize_subjects())
-#dcFileSummaryDFList = summarize_files(data_source= 'IDC', return_data_as='dataframe_list')
-#print(dcFileSummaryDFList)
-#temp_df = dcFileSummaryDFList[8]
-#print(temp_df)
-#temp2_df = temp_df['category'].value_counts()
-#print(temp2_df)
-#final_df = pd.DataFrame({'name':temp2_df.index, 'count':temp2_df.values})
-#print(final_df.head())
+SELECTED_TAB_STYLE = {
+    'borderTop': '2px solid #000204',
+    'borderBottom': '2px solid #000204',
+    'backgroundColor': '#0d7cf5',
+    'color': 'white',
+    'padding': '6px'
+}
+
+TAB_STYLE = {
+    'borderBottom': '2px solid #000204',
+    'padding': '6px',
+    'fontWeight': 'bold'
+}
+
+#######################################
+#                                     #
+#       Subroutines                   #
+#                                     #
+#######################################
+
+def subjectDistribution():
+    subject_dict = summarize_subjects(return_data_as='dict')
+    return subject_dict['data_source']
+
+
+############################################
+#                                          #
+#             Components                   #
+#                                          #
+############################################
+
+subjectdistpie = html.Div(
+    [
+    html.Div(
+        #Subject  Pie Chart
+        className='SubjectDistributionPieChart',
+        children=[
+            html.Hr(),
+            html.H2("Subject Distribution", id='subjectdisttitle'),
+            dcc.Graph(id='subjectDistributionPie')
+        ],
+        style={'width':'49%', 'display':'inline-block'}
+    )
+    ]
+)
+
+filedistpie = html.Div(
+    [
+    html.Div(
+        #File Distributaion Pie Chart
+        className='FileDistributionPieChart',
+        children=[
+            html.Hr(),
+            html.H2("File Distribution", id='filedisttitle'),
+            dcc.Graph(id='fileDistributionPie')
+        ],
+        style={'width':'49%', 'display':'inline-block'}
+    )
+    ]
+)
+
+anatomicsitepie = html.Div(
+    [
+    html.Div(
+        #Anatomic Site Pie Chart
+        # This would benefit from using slim terms
+        className='AnatomicDistributionPieChart',
+        children=[
+            html.Hr(),
+            html.H2("Anatomic Site Distribution", id='anatomictitle'),
+            dcc.Graph(id='anatomicDistributionPie')
+        ],
+        style={'width':'49%', 'display':'inline-block'}
+    )
+    ]
+)
+
+radiobutton = html.Div([
+    dcc.RadioItems(
+        ["Graphs", "Tables"], "Graphs",
+        id="graphtableradio",
+        inline=True
+        )
+])
+
+gobutton = html.Div([
+    dbc.Button("Get Data", id='gobutton')
+
+])
+
+####################################
+#                                  #
+#         Layouts                  #
+#                                  #
+####################################
+
+app.layout = html.Div([
+    dcc.Store(id="subjectsummary"),
+    dcc.Store(id="filesummary"),
+    html.Div([gobutton]),
+    html.Div([filedistpie, subjectdistpie]),
+    html.Div([anatomicsitepie])
+])
+
+
+####################################
+#                                  #
+#         Callbacks                #
+#                                  #
+####################################
+@app.callback(
+    Output("subjectsummary", "data"),
+    Input("gobutton", "n_clicks")
+)
+def populateSubjectSummaryStore(value):
+    return json.dumps(summarize_subjects(return_data_as='dict'))
+
+@app.callback(
+    Output("filesummary", "data"),
+    Input("gobutton", "n_clicks")
+)
+def populateFileSummaryStore(value):
+    return json.dumps(summarize_files(return_data_as='dict')) 
+
+
+
+
+@app.callback(
+    Output("subjectDistributionPie", "figure"),
+    Input("subjectsummary", "data")
+)
+def subjectDistPie(data):
+    subjectjson = json.loads(data)
+    sub_dict = subjectjson['data_source']
+    sub_df = pd.DataFrame.from_dict({"DataCommons":sub_dict.keys(), "Subject Count":sub_dict.values()})
+    return px.pie(sub_df,values="Subject Count", names="DataCommons")
+
+
+
+@app.callback(
+    Output("fileDistributionPie", "figure"),
+    Input("filesummary", "data")
+)
+def fileDistPie(data):
+    filejson = json.loads(data)
+    file_dict = filejson['data_source']
+    file_df = pd.DataFrame.from_dict({"Data Commons": file_dict.keys(), "File Count":file_dict.values()})
+    return px.pie(file_df, values="File Count", names="Data Commons")
+
+@app.callback(
+    Output("anatomicDistributionPie", "figure"),
+    Input("filesummary", "data")
+)
+def anatomicDistPie(data):
+    filejson = json.loads(data)
+    file_dict = filejson['anatomic_site']
+    file_df = pd.DataFrame.from_dict({"Anatomic Site":file_dict.keys(), "Count":file_dict.values()})
+    return px.pie(file_df, values="Count", names="Anatomic Site" )
+
+####################################
+#                                  #
+#         Run Program              #
+#                                  #
+####################################
+
+
+#app.run_server(port=8050, debug=True)
+if __name__ == "__main__":
+    app.run(port=8050, debug=True)
